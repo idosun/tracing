@@ -27,9 +27,9 @@ Sentry.init({
     environment: "prod",
     debug: true,
     beforeSend(event) {
-      if (event.exception) {
-        Sentry.showReportDialog();
-      }
+      // if (event.exception) {
+      //   Sentry.showReportDialog();
+      // }
       return event;
     },
     integrations: [
