@@ -4,8 +4,7 @@ import "./App.css";
 import wrenchImg from "../assets/wrench.png";
 import nailsImg from "../assets/nails.png";
 import hammerImg from "../assets/hammer.png";
-import * as Sentry from '@sentry/browser';
-import { Integrations as ApmIntegrations } from '@sentry/apm';
+import * as Sentry from '@sentry/react';
 
 import { connect } from 'react-redux'
 import { addTool, resetCart, setTools } from '../actions'
@@ -41,6 +40,11 @@ class App extends Component {
     });
   }
 
+  getPlanName() {
+    const plans = ["medium-plan", "large-plan", "small-plan", "enterprise"];
+    return plans[Math.floor(Math.random() * plans.length)];
+  }
+
   async componentDidMount() {
     const defaultError = window.onerror;
     window.onerror = error => {
@@ -50,7 +54,7 @@ class App extends Component {
     // Add context to error/event
     Sentry.configureScope(scope => {
       scope.setUser({ email: this.email }); // attach user/email context
-      scope.setTag("customerType", "medium-plan"); // custom-tag
+      scope.setTag("customerType", this.getPlanName()); // custom-tag
     });
 
     //Will add an XHR Sentry breadcrumb
@@ -65,7 +69,7 @@ class App extends Component {
         case "wrench":
           tool.image = wrenchImg
           return tool
-        case "nails":    
+        case "nails":
           tool.image = nailsImg
           return tool
         default:
@@ -73,6 +77,20 @@ class App extends Component {
           return tool
       }
     })
+
+    // Sentry Transaction, include the tools data as a span
+    const transaction = Sentry.getCurrentHub()
+      .getScope()
+      .getTransaction();
+
+    if (transaction) {
+      let span = transaction.startChild({
+        data: { toolsData: tools },
+        op: "tools received",
+        description: "tools were received",
+      });
+      span.finish();
+    }
 
     this.props.setTools(tools)
   }
@@ -116,35 +134,54 @@ class App extends Component {
       .then(json => console.log(json));
   }
 
-  async checkout() {
-    
-    const order = {
-      email: this.email,
-      cart: this.props.cart
-    };
-
-    ApmIntegrations.Tracing.startIdleTransaction('checkout',
-      {op: 'successOp', transaction: 'successTransaction', sampled: true})
-
-    const response = await fetch(`${BACKEND}/checkout`, {
+  async performCheckoutOnServer (order) {
+    let response = await fetch(`${BACKEND}/checkout`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "email": this.email
       },
       body: JSON.stringify(order)
     }).catch((err) => { throw Error(err) });
 
     if (!response.ok) {
-      throw new Error(response.status + " - " + (response.statusText || "INTERNAL SERVER ERROR"));
+      Sentry.captureException(new Error(response.status + " - " + (response.statusText || "INTERNAL SERVER ERROR")))
+      this.setState({ hasError: true, success: false });
     }
+    
+    return { httpResponseData: response.status + " - " + response.statusText }
+  }
 
-    this.setState({ success: true });
-    return response;
+  async checkout() {
+    const order = {
+      cart: this.props.cart
+    };
+
+    // ----------- Sentry Start Transaction ------------------------
+    let transaction = Sentry.startTransaction({ name: "checkout" });
+    Sentry.configureScope(scope => scope.setSpan(transaction));
+    // -------------------------------------------------------------
+
+    let data = await this.performCheckoutOnServer(order)
+
+    // ----------- Sentry Finish Transaction -----------------------
+    const span = transaction.startChild({
+      data,
+      op: 'task',
+      description: `processing shopping cart result`,
+    });
+
+    span.finish()
+    transaction.finish();
+    // -------------------------------------------------------------
   }
 
   async getTools() {
     const response = await fetch(`${BACKEND}/tools`, {
-      method: "GET"
+      method: "GET",
+      headers: {
+        'email': this.email
+      }
     })
 
     if (!response.ok) {
@@ -206,11 +243,15 @@ class App extends Component {
           </header>
 
           <div className="inventory">
-          <table>
-            <tbody>
-            {this.createTable()}
-            </tbody>
-          </table>
+            {this.props.tools.length ? (
+              <table>
+                <tbody>
+                {this.createTable()}
+                </tbody>
+              </table>
+            ) : (
+              <div>Loading...</div>
+            )}
           </div>
         </main>
         <div className="sidebar">
@@ -281,4 +322,4 @@ const mapStateToProps = (state, ownProps) => {
 export default connect(
   mapStateToProps,
   { addTool, resetCart, setTools }
-)(App)
+)(Sentry.withProfiler(App, { name: "ToolStore"}))

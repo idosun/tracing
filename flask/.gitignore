@@ -1,3 +1,2 @@
 .env
 .virtualenv
-flask_tracing_venv/

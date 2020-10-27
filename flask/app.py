@@ -2,11 +2,26 @@ import os
 from flask import Flask, request, json, abort, make_response, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-# from db import add_tool, get_all_tools
 from db import get_all_tools, get_inventory, update_inventory
 from dotenv import load_dotenv
 load_dotenv()
 DSN = os.getenv("FLASK_APP_DSN")
+
+# use this if sending test data to a proxy and not Sentry
+# def testData(DSN):
+#     KEY = DSN.split('@')[0]
+#     try:
+#         # only use for local proxy, not proxy served by ngrok
+#         if KEY.index('https') == 0:
+#             KEY = KEY[:4] + KEY[5:]
+#     except Exception as err:
+#         print('DSN key w/ http from self-hosted')
+#     PROXY = 'localhost:3001'
+#     MODIFIED_DSN_SAVE = KEY + '@' + PROXY + '/3'
+#     MODIFIED_DSN_SAVE = KEY + '@' + "3d19db15b56d.ngrok.io" + '/3'
+#     return MODIFIED_DSN_SAVE
+# DSN = testData(DSN)
+# print("> DSN", DSN)
 
 def before_send(event, hint):
     if event['request']['method'] == 'OPTIONS':
@@ -65,25 +80,18 @@ def process_order(cart):
 
 @app.before_request
 def sentry_event_context():
-
-    if (request.data):
-        order = json.loads(request.data)
-        with sentry_sdk.configure_scope() as scope:
-                scope.user = { "email" : order["email"] }
-    transactionId = request.headers.get('X-Transaction-ID')
-    sessionId = request.headers.get('X-Session-ID')
+    print('\nrequest.headers email', request.headers.get('email'))
     global Inventory
-
     with sentry_sdk.configure_scope() as scope:
-        scope.set_tag("transaction_id", transactionId)
-        scope.set_tag("session-id", sessionId)
+        scope.user = { "email" : request.headers.get('email') }
+        scope.set_tag("session-id", request.headers.get('X-Session-ID'))
         scope.set_extra("inventory", Inventory)
 
 @app.route('/checkout', methods=['POST'])
 def checkout():
 
     order = json.loads(request.data)
-    print "Processing order for: " + order["email"]
+    print "Processing order for: " + request.headers.get('email')
     cart = order["cart"]
     
     with sentry_sdk.start_span(op="db function: get inventory"):
@@ -104,16 +112,6 @@ def checkout():
             raise(err)
 
     return 'Success'
-
-# @app.route('/tool', methods=['POST'])
-# def new_tool():
-#     with sentry_sdk.start_span(op="db read"):
-#         try:
-#             rows = add_tool()
-#         except:
-#             raise "error adding tool"
-#     return str(rows)
-
 
 @app.route('/tools', methods=['GET'])
 def get_tools():
