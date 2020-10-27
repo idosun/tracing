@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@sentry/apm": "^5.27.1",
-    "@sentry/browser": "^5.27.1",
     "@sentry/cli": "^1.58.0",
+    "@sentry/react": "^5.27.1",
+    "@sentry/tracing": "^5.27.1",
     "history": "^1.17.0",
     "material-ui": "^0.18.7",
     "react": "^16.14.0",
