@@ -21,6 +21,7 @@ const tracingOrigins = [
   'localhost', 
   process.env.REACT_APP_BACKEND,
   process.env.REACT_APP_FRONTEND,
+  "https://r93w6pa2v7.execute-api.us-east-2.amazonaws.com/test/idos-lambda-layer-api",
   /^\//
 ]
 console.log('tracingOrigins', tracingOrigins)

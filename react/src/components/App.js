@@ -12,6 +12,8 @@ import { addTool, resetCart, setTools } from '../actions'
 
 const BACKEND = process.env.REACT_APP_BACKEND_LOCAL || process.env.REACT_APP_BACKEND
 
+const AWS_LAMBDA_GATEWAY_API = "https://r93w6pa2v7.execute-api.us-east-2.amazonaws.com/test/idos-lambda-layer-api";
+
 const monify = n => (n / 100).toFixed(2);
 const getUniqueId = () => '_' + Math.random().toString(36).substr(2, 9);
 
@@ -51,13 +53,17 @@ class App extends Component {
       defaultError(error);
     };
     // Add context to error/event
+    
     Sentry.configureScope(scope => {
       scope.setUser({ email: this.email }); // attach user/email context
       scope.setTag("customerType", this.getPlanName()); // custom-tag
+      
+      const params = new URLSearchParams(window.location.search)
+      if(params.has('flavor')){
+        var flavorVal = params.get('flavor');
+        scope.setTag("flavor", flavorVal); 
+      }
     });
-
-    //Will add an XHR Sentry breadcrumb
-    // this.performXHRRequest();
 
     var tools = await this.getTools();
     tools = tools.map(tool => {
@@ -92,6 +98,21 @@ class App extends Component {
     }
 
     this.props.setTools(tools)
+
+    // if (transaction) {
+    //   // let span = transaction.startChild({
+    //   //   op: "verify inventory",
+    //   //   description: "AWS Lambda call",
+    //   // });
+
+    //   try{
+    //     await this.verifyInventory();
+    //   }catch(error){
+    //     Sentry.captureException(error);
+    //   }finally{
+       
+    //   }
+    // }
   }
 
   buyItem(item) {
@@ -111,10 +132,16 @@ class App extends Component {
     });
   }
 
-  performXHRRequest(){
-    fetch('https://jsonplaceholder.typicode.com/todos/1')
-      .then(response => response.json())
-      .then(json => console.log(json));
+  async verifyInventory(){
+
+    try{
+        await fetch(AWS_LAMBDA_GATEWAY_API, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+      });
+    }catch(error){
+      throw new Error("Failed to get inventory update time.");
+    }
   }
 
   async getTools() {
